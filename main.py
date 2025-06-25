@@ -9,6 +9,7 @@ from schemas.models import AnalysisRequest, QuestionRequest
 from decision_agent.manager import DecisionManager
 from llm.generator import generate_recommendations, answer_question
 from config import MARKETPLACE_API_KEY, OPENAI_API_KEY
+from utils.marketplace_api import get_all_wb_products
 
 app = FastAPI(title="Мультиагентная аналитическая система", version="1.0.0")
 analysis_cache = {}
@@ -64,3 +65,24 @@ async def ask_question(request: QuestionRequest):
         sku=request.sku
     )
     return {"answer": llm_answer}
+# НОВЫЙ ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ СПИСКА ТОВАРОВ
+# ============================================
+@app.get("/products")
+async def get_product_list():
+    """
+    Возвращает список всех товаров продавца с их SKU и названиями
+    для отображения в выпадающем списке.
+    """
+    print("\nПолучен запрос на список всех товаров...")
+    if not MARKETPLACE_API_KEY:
+        raise HTTPException(status_code=500, detail="API ключ маркетплейса не настроен на сервере.")
+
+    # Вызываем нашу новую функцию из utils
+    product_data = get_all_wb_products(api_key=MARKETPLACE_API_KEY)
+
+    if "error" in product_data:
+        # Если API вернуло ошибку, передаем ее клиенту
+        raise HTTPException(status_code=502, detail=f"Ошибка при обращении к API Wildberries: {product_data['error']}")
+
+    print(f"Успешно получено {len(product_data.get('products', []))} товаров.")
+    return product_data
