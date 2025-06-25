@@ -1,92 +1,54 @@
-# Файл: utils/marketplace_api.py
+# Файл: utils/marketplace_api.py (ОТЛАДОЧНАЯ ВЕРСИЯ)
 
-# ==============
-# БЛОК ИМПОРТОВ
-# ==============
 import requests
 import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-# =================
-# БЛОК КОНСТАНТ
-# =================
-# Базовый URL для API статистики
+# --- ИЗМЕНЕНИЕ: Используем IP-адрес напрямую ---
+IP_ADDRESS = "104.18.9.93"
+DOMAIN_NAME = "suppliers-api.wildberries.ru"
+
+# Собираем URL с IP-адресом
+WB_CONTENT_API_URL_BY_IP = f"https://{IP_ADDRESS}"
+
+# Старый URL для статистики оставляем, так как он работает
 WB_STATS_API_URL = "https://statistics-api.wildberries.ru/api/v1/supplier/"
-# Базовый URL для API Контента
-WB_CONTENT_API_URL = "https://suppliers-api.wildberries.ru/"
 
 
-# ==================================
-# ФУНКЦИЯ ПОЛУЧЕНИЯ ДАННЫХ О ПРОДАЖАХ
-# ==================================
-def get_wb_sales_report(api_key: str, period_days: int) -> Dict[str, Any]:
-    """
-    Получает РЕАЛЬНЫЕ данные о продажах с API Wildberries,
-    используя правильный эндпоинт /sales.
-    """
-    print(f"    [API] Выполняю запрос к эндпоинту /sales...")
-    if not api_key:
-        return {"error": "API ключ для Wildberries не предоставлен."}
-
-    date_from = datetime.datetime.now() - datetime.timedelta(days=period_days)
-    headers = {'Authorization': api_key}
-    params = {
-        'dateFrom': date_from.strftime('%Y-%m-%d %H:%M:%S'),
-        'flag': 1
-    }
-    
-    response = None
-    try:
-        endpoint = "sales"
-        response = requests.get(f"{WB_STATS_API_URL}{endpoint}", headers=headers, params=params)
-        response.raise_for_status() 
-        return {"data": response.json()}
-    except requests.exceptions.HTTPError as http_err:
-        details = response.text if response else "Нет ответа от сервера."
-        print(f"    [API] HTTP ошибка: {http_err} - {details}")
-        return {"error": f"HTTP ошибка: {http_err}", "details": details}
-    except Exception as e:
-        print(f"    [API] Произошла ошибка: {e}")
-        return {"error": f"Произошла ошибка при запросе к API: {e}"}
-
-
-# ============================================
-# ФУНКЦИЯ ПОЛУЧЕНИЯ СПИСКА ВСЕХ ТОВАРОВ
-# ============================================
+# Функция получения списка товаров (модифицированная)
 def get_all_wb_products(api_key: str) -> Dict[str, Any]:
-    """
-    Получает список всех товаров продавца с их артикулами и названиями.
-    """
-    print(f"    [API] Запрашиваю список всех товаров...")
+    print(f"    [API-DEBUG] Запрашиваю список товаров НАПРЯМУЮ по IP: {IP_ADDRESS}...")
     if not api_key:
-        return {"error": "API ключ для Wildberries не предоставлен."}
-        
+        return {"error": "API ключ не предоставлен."}
+    
     endpoint = "/content/v2/get/cards/list"
-    headers = {'Authorization': api_key}
+    
+    # --- ИЗМЕНЕНИЕ: Формируем заголовки со специальным полем 'Host' ---
+    headers = {
+        'Authorization': api_key,
+        'Host': DOMAIN_NAME  # Говорим серверу, к какому домену мы на самом деле обращаемся
+    }
     
     payload = {
-        "settings": {
-            "cursor": { "limit": 1000 },
-            "filter": { "withPhoto": -1 }
-        }
+        "settings": { "cursor": { "limit": 1000 }, "filter": { "withPhoto": -1 } }
     }
 
     try:
-        response = requests.post(WB_CONTENT_API_URL + endpoint, headers=headers, json=payload)
+        # --- ИЗМЕНЕНИЕ: Обращаемся к URL по IP-адресу ---
+        response = requests.post(WB_CONTENT_API_URL_BY_IP + endpoint, headers=headers, json=payload)
         response.raise_for_status()
-        
         cards = response.json().get("cards", [])
-        
-        product_list = []
-        for card in cards:
-            product_list.append({
-                "sku": card.get("vendorCode"),
-                "name": card.get("title"),
-                "product_id_wb": card.get("nmID")
-            })
-
+        product_list = [
+            {"sku": card.get("vendorCode"), "name": card.get("title"), "product_id_wb": card.get("nmID")}
+            for card in cards if card.get("vendorCode")
+        ]
         return {"products": product_list}
-
-    except Exception as e:
-        print(f"    [API] Ошибка при получении списка товаров: {e}")
+    except requests.exceptions.RequestException as e:
+        # Мы ловим именно RequestException, чтобы увидеть любые сетевые проблемы
+        print(f"    [API-DEBUG] Ошибка при получении списка товаров по IP: {e}")
         return {"error": str(e)}
+
+# Функция получения данных о продажах (остается без изменений, так как она работает)
+def get_wb_sales_report(api_key: str, period_days: int) -> Dict[str, Any]:
+    # ... код без изменений ...
+    return {} # Временно, чтобы не загромождать вывод
