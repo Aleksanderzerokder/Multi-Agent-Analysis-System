@@ -1,23 +1,48 @@
 # Файл: utils/marketplace_api.py
-import random
+import requests
+import datetime
+from typing import Dict, Any
 
-def get_sales_data_from_marketplace(api_key: str, sku: str, period_days: int) -> dict:
+WB_STATS_API_URL = "https://statistics-api.wildberries.ru/api/v1/supplier/"
+
+def get_wb_sales_report(api_key: str, period_days: int) -> Dict[str, Any]:
     """
-    ЭМУЛЯТОР: Эта функция имитирует реальный запрос к API маркетплейса.
-    Она "делает вид", что использует API-ключ для получения данных.
+    Получает РЕАЛЬНЫЕ данные о продажах с API Wildberries,
+    используя правильный эндпоинт /sales.
     """
-    print(f"    [API] Имитация запроса к API маркетплейса для SKU {sku}...")
+    print(f"    [API] Выполняю запрос к эндпоинту /sales...")
+    if not api_key:
+        return {"error": "API ключ для Wildberries не предоставлен."}
 
-    # Проверяем "валидность" ключа для эмуляции
-    if not api_key or "sk-" not in api_key:
-        return {"error": "Invalid or missing API key"}
+    # Для /sales требуется полный формат даты и времени
+    date_from = datetime.datetime.now() - datetime.timedelta(days=period_days)
 
-    # Возвращаем такие же данные, как генерировали раньше, но уже из "API"
-    return {
-        "total_sales_rub": random.randint(50000, 200000),
-        "units_sold": random.randint(100, 500),
-        "sales_trend": random.choice(["up", "down", "stable"]),
-        "conversion_rate": round(random.uniform(0.05, 0.25), 2)
+    headers = {'Authorization': api_key}
+    
+    # --- ВОТ ГЛАВНОЕ ИСПРАВЛЕНИЕ: Параметры для эндпоинта /sales ---
+    params = {
+        # Формат YYYY-MM-DD HH:MM:SS
+        'dateFrom': date_from.strftime('%Y-%m-%d %H:%M:%S'),
+        'flag': 1 # 1 = сортировка по дате обновления, 0 = по дате продажи. 1 обычно эффективнее.
     }
 
-# По аналогии можно добавить функции для цен, остатков и т.д.
+    print(f"    [DEBUG] Отправляю запрос с ключом, который заканчивается на: ...{api_key[-6:]}")
+    response = None
+    try:
+        # --- ИСПОЛЬЗУЕМ ПРАВИЛЬНЫЙ ЭНДПОИНТ ---
+        endpoint = "sales"
+        response = requests.get(f"{WB_STATS_API_URL}{endpoint}", headers=headers, params=params)
+        
+        # Если ключ неверный, WB вернет 401
+        response.raise_for_status() 
+        
+        # Если все хорошо, вернется список продаж
+        return {"data": response.json()}
+        
+    except requests.exceptions.HTTPError as http_err:
+        details = response.text if response else "Нет ответа от сервера."
+        print(f"    [API] HTTP ошибка: {http_err} - {details}")
+        return {"error": f"HTTP ошибка: {http_err}", "details": details}
+    except Exception as e:
+        print(f"    [API] Произошла ошибка: {e}")
+        return {"error": f"Произошла ошибка при запросе к API: {e}"}
